@@ -1,0 +1,139 @@
+﻿安装mysql 之后 
+yum install mysql-devel
+
+修改mysql配置文件my.cnf（windows为my.ini）
+my.cnf一般在/etc/my.cnf位置。找到后请在以下三部分里添加如下内容：
+
+[client]
+default-character-set = utf8mb4
+
+[mysql]
+default-character-set = utf8mb4
+
+[mysqld]
+max_allowed_packet = 500M
+character-set-client-handshake = FALSE
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+init_connect='SET NAMES utf8mb4'
+
+#设置数据	
+CREATE USER 'gitlab'@'localhost' IDENTIFIED BY '123qweASD<>?';
+CREATE DATABASE IF NOT EXISTS `gitlabhq_production` DEFAULT CHARACTER SET `utf8mb4` COLLATE `utf8mb4_unicode_ci`;
+#GRANT SELECT, INSERT, UPDATE, DELETE,CREATE, CREATE TEMPORARY TABLES, DROP, INDEX, ALTER, LOCK TABLES, REFERENCES,TRIGGER,EVENT ON `gitlabhq_production`.* TO 'gitlab'@'localhost';
+GRANT SELECT ON`mysql`.`user` TO 'gitlab'@'localhost' ;
+GRANT ALL PRIVILEGES ON `gitlabhq_production`.* TO gitlab@'localhost' ;
+GRANT TRIGGER ON `gitlabhq_production`.* TO gitlab@'localhost';
+
+CREATE USER 'gitlab'@'%' IDENTIFIED BY '123qweASD<>?';
+GRANT SELECT ON`mysql`.`user` TO 'gitlab'@'%' ;
+GRANT ALL PRIVILEGES ON `gitlabhq_production`.* TO gitlab@'%' ;
+GRANT TRIGGER ON `gitlabhq_production`.* TO gitlab@'%';
+
+#特殊修改，升级程序需要验证。但不确定有无问题。待考察
+update mysql.user set Trigger_priv='Y' where user='gitlab';
+flush privileges;
+
+安装
+rpm -ihv /data/download/gitlab-ce-8.5.4-ce.0.el7.x86_64.rpm
+yum -y install gcc gcc-c++
+#修改gitlab配置使用mysql
+vi /etc/gitlab/gitlab.rb
+	 postgresql['enable'] = false	
+	 gitlab_rails['db_adapter'] = "mysql2"
+	 gitlab_rails['db_encoding'] = "utf8mb4"
+	# gitlab_rails['db_collation'] = nil
+	 gitlab_rails['db_database'] = "gitlabhq_production"
+	 gitlab_rails['db_pool'] = 10
+	 gitlab_rails['db_username'] = "gitlab"
+	 gitlab_rails['db_password'] = "123qweASD<>?"
+	 gitlab_rails['db_host'] = "localhost"
+	 gitlab_rails['db_port'] = 3306
+#ruby gem添加mysql导入和安装
+cd /opt/gitlab/embedded/service/gitlab-rails/
+/opt/gitlab/embedded/bin/bundle install --with=mysql
+sudo gitlab-ctl reconfigure
+gitlab-ctl restart
+
+#拷贝备份文件 同版本的
+cp /data/1526275648_gitlab_backup.tar.gz /var/opt/gitlab/backups/
+gunzip /var/opt/gitlab/backups/1526275648_gitlab_backup.tar.gz
+#停止相关数据连接服务 
+gitlab-ctl stop unicorn 
+gitlab-ctl stop sidekiq
+gitlab-ctl status #查看状态
+# 备份文件将保存在gitlab.yml文件中定义的backup_path中，文件名为TIMESTAMP_gitlab_backup.tar,TIMESTAMP为备份时的时间戳。
+chmod 777 /var/opt/gitlab/backups/1526275648_gitlab_backup.tar #备份文件的存放地址
+gitlab-rake gitlab:backup:restore BACKUP=1526275648
+	# 恢复中 Do you want to continue (yes/no)? yes 输入yes
+gitlab-ctl restart #重新启动
+
+
+#升级下一版本
+#升级前
+chmod -R 0770 /var/opt/gitlab/git-data
+chmod -R 2770 /var/opt/gitlab/git-data/repositories
+
+#升级 8.17.8(8的最后一个版本)
+rpm -Uhv /data/download/gitlab-ce-8.17.8-ce.0.el7.x86_64.rpm 
+
+使用mysql 
+cd /opt/gitlab/embedded/service/gitlab-rails/
+/opt/gitlab/embedded/bin/bundle install --with=mysql
+sudo gitlab-ctl reconfigure
+gitlab-ctl restart
+
+
+#升级9.5.9
+rpm -Uhv /data/download/gitlab-ce-9.5.9-ce.0.el7.x86_64.rpm
+
+使用mysql 
+cd /opt/gitlab/embedded/service/gitlab-rails/
+/opt/gitlab/embedded/bin/bundle install --with=mysql
+sudo gitlab-ctl reconfigure
+gitlab-ctl restart
+
+
+#升级10.6.5 主要是mysql 依赖安装问题。需要ruby.h文件
+yum install policycoreutils-python
+rpm -Uhv /data/download/gitlab-ce-10.6.5-ce.0.el7.x86_64.rpm 
+
+使用mysql 
+cd /opt/gitlab/embedded/service/gitlab-rails/
+/opt/gitlab/embedded/bin/bundle install --with=mysql
+sudo gitlab-ctl reconfigure
+gitlab-ctl restart
+
+#升级10.7.1
+rpm -Uhv /data/download/gitlab-ce-10.7.5-ce.0.el7.x86_64.rpm 
+
+使用mysql 
+cd /opt/gitlab/embedded/service/gitlab-rails/
+/opt/gitlab/embedded/bin/bundle install --with=mysql
+sudo gitlab-ctl reconfigure
+gitlab-ctl restart
+
+#汉化
+patch -d /opt/gitlab/embedded/service/gitlab-rails -p1  < /data/download/10.7.1-zh.diff
+
+重装
+#清除数据库信息
+drop user gitlab@'localhost';
+drop database gitlabhq_production;
+
+清除上次安装目录
+	rpm -qa |grep gitlab
+	rpm -e gitlab-ce-10.7.1-ce.0.el7.x86_64
+	rm -rf /opt/gitlab
+	rm -rf /var/opt/gitlab
+	rm -rf /var/log/gitlab
+	rm -rf /etc/gitlab
+	
+
+
+
+
+
+
+
+
